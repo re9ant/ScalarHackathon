@@ -6,7 +6,7 @@ colorTo: blue
 sdk: docker
 pinned: false
 license: mit
-short_description: A Mini RL Environment where LLM agents debug broken Python code
+short_description: RL env where LLM agents debug broken Python code
 ---
 
 # 🐛 CodeDebugger — Meta OpenEnv Hackathon Round 1
