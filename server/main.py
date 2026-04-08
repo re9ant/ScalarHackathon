@@ -165,7 +165,7 @@ async def root():
 async def health():
     """Returns server health and current task."""
     return {
-        "status": "ok",
+        "status": "healthy",
         "environment": "CodeDebugger",
         "version": "1.0.0",
         "initialized": env._initialized,
@@ -248,6 +248,61 @@ async def step(action: CodeDebuggerAction):
 async def state():
     """Returns the current environment state without taking any action."""
     return env.state
+
+
+@app.get("/metadata", tags=["System"], summary="Environment metadata")
+async def metadata():
+    """Returns environment name and description for OpenEnv discovery."""
+    return {
+        "name": "CodeDebugger",
+        "description": (
+            "An RL environment where an AI agent must debug broken Python code snippets. "
+            "Covers syntax errors, runtime errors, logic bugs, and algorithm bugs across "
+            "36 tasks with three difficulty levels."
+        ),
+        "version": "1.0.0",
+        "total_tasks": 36,
+    }
+
+
+@app.get("/schema", tags=["System"], summary="Action/Observation/State schemas")
+async def schema():
+    """Returns JSON schemas for the action, observation, and state models."""
+    return {
+        "action": CodeDebuggerAction.model_json_schema(),
+        "observation": CodeDebuggerObservation.model_json_schema(),
+        "state": EnvironmentState.model_json_schema(),
+    }
+
+
+@app.post("/mcp", tags=["System"], summary="JSON-RPC / MCP endpoint")
+async def mcp(request: dict = {}):
+    """Minimal MCP-compatible JSON-RPC endpoint for OpenEnv tool discovery."""
+    method = request.get("method", "")
+    req_id = request.get("id", 1)
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2025-03-26",
+                "serverInfo": {"name": "CodeDebugger", "version": "1.0.0"},
+                "capabilities": {"tools": {}},
+            },
+        }
+
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {
+            "tools": [
+                {"name": "reset", "description": "Reset environment with a new task"},
+                {"name": "step", "description": "Take an action in current episode"},
+                {"name": "state", "description": "Get current environment state"},
+            ]
+        },
+    }
 
 
 @app.exception_handler(500)

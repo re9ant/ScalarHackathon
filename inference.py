@@ -15,7 +15,7 @@ Optional:
 Output format (per hackathon spec — must match exactly):
     [START] task=<task_name> env=<benchmark> model=<model_name>
     [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
-    [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
+    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
 """
 
 import os
@@ -288,9 +288,11 @@ def run_inference(task_id=None, difficulty="easy", episodes=3):
 
         # ── [END] ─────────────────────────────────────────────────────────
         success = bool(obs.get("success", False))
+        score = float(obs.get("task_score", 0.0))
+        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
         rewards_csv = ",".join(f"{r:.2f}" for r in all_rewards)
         print(
-            f"[END] success={str(success).lower()} steps={step_num} rewards={rewards_csv}",
+            f"[END] success={str(success).lower()} steps={step_num} score={score:.3f} rewards={rewards_csv}",
             flush=True,
         )
 

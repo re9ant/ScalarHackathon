@@ -48,6 +48,7 @@ def deploy(token: str, username: str, space_name: str = "CodeDebugger-RL-Env"):
         "app.py",
         "inference.py",
         "server/__init__.py",
+        "server/models.py",
         "server/main.py",
         "server/environment.py",
         "server/tasks.py",

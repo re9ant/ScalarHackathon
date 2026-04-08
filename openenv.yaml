@@ -23,7 +23,7 @@ tasks:
   - id: hard_001
     name: "Hard: Mutable default argument"
     difficulty: hard
-    category: algorithm
+    category: logic
 action_space:
   type: discrete
   actions:

@@ -156,7 +156,7 @@ The reward function provides **dense signal throughout the episode**, not just s
 | `log_010` | String immutability misunderstanding | logic |
 | `alg_001` | Bubble sort swaps in wrong direction | algorithm |
 | `alg_002` | Fibonacci off-by-one in range | algorithm |
-| `alg_003` | Binary search wrong bounds | algorithm |
+| `alg_004` | Factorial wrong base case | algorithm |
 | `alg_005` | Palindrome check off-by-one | algorithm |
 | `alg_007` | Count occurrences wrong logic | algorithm |
 
@@ -164,15 +164,15 @@ The reward function provides **dense signal throughout the episode**, not just s
 
 | ID | Title | Category |
 |----|-------|----------|
-| `hard_001` | **Mutable default argument** | algorithm |
-| `hard_002` | Closure variable capture bug | algorithm |
-| `hard_003` | Shallow copy vs deep copy | algorithm |
-| `hard_004` | Generator exhaustion | algorithm |
-| `hard_005` | Integer identity vs equality | algorithm |
+| `hard_001` | **Mutable default argument** | logic |
+| `hard_002` | Closure variable capture bug | logic |
+| `hard_003` | Shallow copy vs deep copy | logic |
+| `hard_004` | Generator exhaustion | logic |
+| `hard_005` | Integer identity vs equality | logic |
 | `hard_006` | Dict comprehension key collision | algorithm |
 | `hard_007` | Missing return in recursive branch | algorithm |
-| `hard_008` | Thread-unsafe counter | algorithm |
-| `alg_004` | Factorial wrong base case | algorithm |
+| `hard_008` | Wrong string join separator | logic |
+| `alg_003` | Binary search wrong bounds | algorithm |
 
 ---
 
