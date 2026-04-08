@@ -327,18 +327,18 @@ else:
         "difficulty": "medium",
         "category": "logic",
         "buggy_code": """\
-numbers = [1, 2, 3, 4, 5]
+numbers = [1, 2, 2, 3, 2, 4, 5]
 for num in numbers:
-    if num % 2 == 0:
+    if num == 2:
         numbers.remove(num)
 print(numbers)
 """,
-        "description": "This code tries to remove all even numbers from a list, but the result is wrong.",
-        "expected_output": "[1, 3, 5]",
-        "hint": "Modifying a list while iterating over it causes elements to be skipped. Use a copy or list comprehension.",
+        "description": "This code tries to remove all occurrences of 2 from the list, but some 2s are skipped due to mutation during iteration. Fix it.",
+        "expected_output": "[1, 3, 4, 5]",
+        "hint": "Modifying a list while iterating over it causes elements to be skipped. Build a new list instead.",
         "solution": """\
-numbers = [1, 2, 3, 4, 5]
-numbers = [num for num in numbers if num % 2 != 0]
+numbers = [1, 2, 2, 3, 2, 4, 5]
+numbers = [num for num in numbers if num != 2]
 print(numbers)
 """,
     },
@@ -434,15 +434,15 @@ def fibonacci(n):
     elif n == 1:
         return [0]
     fib = [0, 1]
-    for i in range(2, n):
+    for i in range(2, n - 1):
         fib.append(fib[i-1] + fib[i-2])
     return fib
 
 print(fibonacci(8))
 """,
-        "description": "This function should return the first 8 Fibonacci numbers, but the list has wrong length.",
+        "description": "This function should return the first 8 Fibonacci numbers [0,1,1,2,3,5,8,13], but returns too few.",
         "expected_output": "[0, 1, 1, 2, 3, 5, 8, 13]",
-        "hint": "The function returns the correct numbers but check whether range(2, n) generates n-2 iterations.",
+        "hint": "The range in the for loop excludes one iteration — change n-1 to n.",
         "solution": """\
 def fibonacci(n):
     if n <= 0:
@@ -476,11 +476,11 @@ def binary_search(arr, target):
     return -1
 
 arr = [1, 3, 5, 7, 9, 11, 13]
-print(binary_search(arr, 7))
+print(binary_search(arr, 1))
 """,
-        "description": "This binary search should find the index of 7 in the sorted list, but may crash or return wrong value.",
-        "expected_output": "3",
-        "hint": "The initial right bound is wrong. Also check whether `right = mid - 1` is correct with `left < right` condition.",
+        "description": "This binary search should find the index of 1 (first element) in the sorted list, but returns wrong result due to incorrect bounds. Expected index is 0.",
+        "expected_output": "0",
+        "hint": "The initial right bound should be len(arr) - 1, not len(arr). This causes wrong mid calculation at the boundaries.",
         "solution": """\
 def binary_search(arr, target):
     left, right = 0, len(arr) - 1
@@ -495,7 +495,7 @@ def binary_search(arr, target):
     return -1
 
 arr = [1, 3, 5, 7, 9, 11, 13]
-print(binary_search(arr, 7))
+print(binary_search(arr, 1))
 """,
     },
     {
@@ -659,23 +659,23 @@ print(len(first_pass), len(second_pass))
         "difficulty": "hard",
         "category": "logic",
         "buggy_code": """\
-a = 1000
-b = 1000
-if a is b:
-    print("same")
-else:
-    print("different")
+def lists_equal(a, b):
+    return a is b
+
+x = [1, 2, 3]
+y = [1, 2, 3]
+print(lists_equal(x, y))
 """,
-        "description": "This code checks if two variables with value 1000 are the same object. Fix it to check value equality instead.",
-        "expected_output": "same",
-        "hint": "Python's `is` checks object identity (same memory), not value equality. Use == for value comparison.",
+        "description": "This function should return True when two lists have the same contents, but returns False because it uses identity check instead of equality. Fix it.",
+        "expected_output": "True",
+        "hint": "Python's `is` checks if two variables point to the exact same object in memory. Use == to check if two objects have equal values.",
         "solution": """\
-a = 1000
-b = 1000
-if a == b:
-    print("same")
-else:
-    print("different")
+def lists_equal(a, b):
+    return a == b
+
+x = [1, 2, 3]
+y = [1, 2, 3]
+print(lists_equal(x, y))
 """,
     },
     {
@@ -686,18 +686,17 @@ else:
         "buggy_code": """\
 words = ["apple", "banana", "avocado", "blueberry", "cherry"]
 first_letter_map = {word[0]: word for word in words}
-print(len(first_letter_map))
+print(sorted(first_letter_map.values()))
 """,
-        "description": "This code should create a map grouping words by first letter, but words are being overwritten. Fix it to group all words with the same first letter into a list.",
-        "expected_output": "3",
-        "hint": "When multiple words share the same first letter, the dict comprehension overwrites previous entries. Use a defaultdict or group them into lists.",
+        "description": "This code should collect all words grouped by first letter, but words with duplicate first letters overwrite each other. Fix it to print all 5 unique words sorted alphabetically.",
+        "expected_output": "['apple', 'avocado', 'banana', 'blueberry', 'cherry']",
+        "hint": "Dict comprehension overwrites duplicates. Collect all words first then sort: just sort the original list.",
         "solution": """\
-from collections import defaultdict
 words = ["apple", "banana", "avocado", "blueberry", "cherry"]
-first_letter_map = defaultdict(list)
+all_words = []
 for word in words:
-    first_letter_map[word[0]].append(word)
-print(len(first_letter_map))
+    all_words.append(word)
+print(sorted(all_words))
 """,
     },
     {
@@ -731,49 +730,23 @@ print(find_max([3, 1, 4, 1, 5, 9, 2, 6]))
     },
     {
         "id": "hard_008",
-        "title": "Thread-unsafe counter",
+        "title": "Wrong string join separator",
         "difficulty": "hard",
-        "category": "runtime",
+        "category": "logic",
         "buggy_code": """\
-import threading
-
-counter = 0
-
-def increment(n):
-    global counter
-    for _ in range(n):
-        counter += 1
-
-threads = [threading.Thread(target=increment, args=(1000,)) for _ in range(5)]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(counter == 5000)
+words = ["hello", "world", "from", "python"]
+result = ", ".join(words)
+words2 = result.split(" ")
+print(words2[0])
 """,
-        "description": "This code tries to increment a counter from multiple threads. Fix it to use a thread-safe approach so the result is always 5000.",
-        "expected_output": "True",
-        "hint": "Use threading.Lock() to protect the counter increment operation.",
+        "description": "This code joins words with ', ' then splits by ' ' to recover the words. But splitting by ' ' leaves commas attached to the words. Fix it to correctly recover the clean words.",
+        "expected_output": "hello",
+        "hint": "The split separator ' ' doesn't match the join separator ', '. Either split by ', ' or join with a different separator.",
         "solution": """\
-import threading
-
-counter = 0
-lock = threading.Lock()
-
-def increment(n):
-    global counter
-    for _ in range(n):
-        with lock:
-            counter += 1
-
-threads = [threading.Thread(target=increment, args=(1000,)) for _ in range(5)]
-for t in threads:
-    t.start()
-for t in threads:
-    t.join()
-
-print(counter == 5000)
+words = ["hello", "world", "from", "python"]
+result = ", ".join(words)
+words2 = result.split(", ")
+print(words2[0])
 """,
     },
     # ─── MORE MEDIUM TASKS ──────────────────────────────────────────────────
@@ -782,24 +755,23 @@ print(counter == 5000)
         "title": "Print inside function not returned",
         "difficulty": "medium",
         "category": "logic",
-        "buggy_code": """\
-def square(n):
-    print(n * n)
-
-result = square(6)
-print(result)
-""",
-        "description": "This code should compute and use the square of 6, but result is None.",
-        "expected_output": "36\n36",
-        "hint": "The function prints the value but doesn't return it.",
-        "solution": """\
-def square(n):
-    return n * n
-
-result = square(6)
-print(result)
-print(result)
-""",
+        "buggy_code": (
+            "def square(n):\n"
+            "    print(n * n)\n"
+            "\n"
+            "result = square(6)\n"
+            "print(result)\n"
+        ),
+        "description": "This code should store the square of 6 in result and print it once. But result is None because the function prints instead of returning. Fix it to return the value.",
+        "expected_output": "36",
+        "hint": "The function prints the value but doesn't return it. Use return instead of print.",
+        "solution": (
+            "def square(n):\n"
+            "    return n * n\n"
+            "\n"
+            "result = square(6)\n"
+            "print(result)\n"
+        ),
     },
     {
         "id": "log_010",

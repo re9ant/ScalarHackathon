@@ -58,7 +58,52 @@ EXECUTION_TIMEOUT = 10  # seconds
 MAX_OUTPUT_LENGTH = 2000  # chars
 
 
+def is_trivial_exploit(code: str, expected_output: str) -> bool:
+    """
+    Detect if submitted code is a trivial exploit (just printing the expected output
+    as a literal string, without actually solving the logic problem).
+
+    An exploit looks like:
+      print("x is greater than 5")   ← when expected_output is "x is greater than 5"
+      print(55)                       ← when expected_output is "55"
+
+    Returns True if the code is a trivial exploit.
+    """
+    if not expected_output:
+        return False
+
+    stripped = code.strip()
+    expected_stripped = expected_output.strip()
+
+    # Must be short (exploits are simple one-liners)
+    if len(stripped) > 200:
+        return False
+
+    # Check for single-line that just prints the expected output literally
+    single_line_patterns = [
+        f'print("{expected_stripped}")',
+        f"print('{expected_stripped}')",
+        f"print({expected_stripped})",       # for numeric outputs like 55
+        f'print("""{expected_stripped}""")',
+    ]
+    for p in single_line_patterns:
+        if stripped == p or stripped == p + "\n":
+            return True
+
+    # Multi-line exploit: code is just a series of print statements matching expected
+    expected_lines = expected_stripped.split("\n")
+    if len(expected_lines) > 1:
+        code_lines = [l.strip() for l in stripped.split("\n") if l.strip()]
+        print_lines = [l for l in code_lines if l.startswith("print(")]
+        if len(print_lines) == len(expected_lines) == len(code_lines):
+            # All lines are prints and match expected outputs
+            return True
+
+    return False
+
+
 def is_safe_code(code: str) -> Tuple[bool, str]:
+
     """
     Check if the submitted code is safe to execute.
     
@@ -160,11 +205,14 @@ def normalize_output(output: str) -> str:
 def grade_submission(submitted_code: str, expected_output: str) -> dict:
     """
     Grade a submitted code fix.
-    
+
+    Checks for exploits (hardcoded print statements), security issues, then
+    executes the code and compares output to expected_output.
+
     Args:
         submitted_code: The code submitted by the agent
         expected_output: The expected output string
-    
+
     Returns:
         Grade result dict with keys:
             - passed (bool): Whether the submission is correct
@@ -173,6 +221,16 @@ def grade_submission(submitted_code: str, expected_output: str) -> dict:
             - error (str | None): Error message if execution failed
             - message (str): Human-readable result message
     """
+    # Exploit detection — reject trivial hardcoded-print submissions
+    if is_trivial_exploit(submitted_code, expected_output):
+        return {
+            "passed": False,
+            "reward": -0.5,
+            "actual_output": "",
+            "error": "Exploit detected: submission appears to just print the expected output without solving the problem.",
+            "message": "❌ Exploit detected. You must fix the actual bug, not just print the expected answer.",
+        }
+
     # Run the submitted code
     success, stdout, stderr = run_code(submitted_code)
     
