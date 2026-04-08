@@ -30,11 +30,14 @@ from openai import OpenAI
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
-HF_TOKEN = os.getenv("HF_TOKEN")
+# Accept both HF_TOKEN (hackathon spec) and OPENAI_API_KEY (OpenAI convention)
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 ENV_SERVER_URL = os.getenv("ENV_SERVER_URL", "https://re9ant-codedebugger-rl-env.hf.space")
 
 if HF_TOKEN is None:
-    raise ValueError("HF_TOKEN environment variable is required")
+    raise ValueError(
+        "API key required. Set HF_TOKEN (Hugging Face) or OPENAI_API_KEY (OpenAI)."
+    )
 
 # ─── OpenAI Client (required by hackathon spec) ─────────────────────────────
 
@@ -292,13 +295,23 @@ def run_inference(task_id=None, difficulty="easy", episodes=3):
         )
 
 
+# ─── Reproducible Baseline Tasks ───────────────────────────────────────────
+# These 3 tasks form the fixed benchmark for reproducible baseline scores.
+# Run with `python inference.py` to get consistent results across evaluations.
+BASELINE_TASKS = [
+    ("syn_001", "easy"),    # Easy:   Missing colon in if statement
+    ("log_001", "medium"),  # Medium: Off-by-one in range (sum 1..10)
+    ("hard_001", "hard"),   # Hard:   Mutable default argument
+]
+
+
 # ─── Entry Point ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     """
-    Default behaviour when called with no arguments:
-      - Run 3 episodes on easy tasks
-      - Uses API_BASE_URL, MODEL_NAME, HF_TOKEN from environment
+    Default behaviour (no args):
+      - Runs the 3 fixed baseline tasks for reproducible scores
+      - Uses API_BASE_URL, MODEL_NAME, HF_TOKEN (or OPENAI_API_KEY) from env
       - Total runtime well under 20 minutes
     """
     import argparse
@@ -306,23 +319,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="CodeDebugger LLM Agent — Meta OpenEnv Hackathon Round 1"
     )
-    parser.add_argument("--task-id", default=None, help="Specific task ID (optional)")
     parser.add_argument(
-        "--difficulty",
-        default="easy",
-        choices=["easy", "medium", "hard"],
-        help="Task difficulty filter (default: easy)",
+        "--task-id", default=None,
+        help="Run a specific task ID (disables baseline mode)"
     )
     parser.add_argument(
-        "--episodes",
-        type=int,
-        default=3,
-        help="Number of episodes to run (default: 3)",
+        "--difficulty", default=None,
+        choices=["easy", "medium", "hard"],
+        help="Filter random task selection by difficulty",
+    )
+    parser.add_argument(
+        "--episodes", type=int, default=None,
+        help="Number of episodes (default: 3 baseline tasks)",
     )
     args = parser.parse_args()
 
-    run_inference(
-        task_id=args.task_id,
-        difficulty=args.difficulty,
-        episodes=args.episodes,
-    )
+    if args.task_id or args.difficulty or args.episodes:
+        # Custom run
+        run_inference(
+            task_id=args.task_id,
+            difficulty=args.difficulty or "easy",
+            episodes=args.episodes or 1,
+        )
+    else:
+        # Default: reproducible baseline evaluation
+        print("Running reproducible baseline evaluation (3 tasks)...", file=sys.stderr)
+        for task_id, difficulty in BASELINE_TASKS:
+            run_inference(task_id=task_id, difficulty=difficulty, episodes=1)

@@ -1,18 +1,22 @@
 """
 RL Environment for the CodeDebugger challenge.
 
-This environment presents an LLM agent with buggy Python code snippets
-and rewards it for successfully fixing them.
+Implements the full OpenEnv spec:
+  - Typed Action (CodeDebuggerAction) and Observation (CodeDebuggerObservation)
+  - reset() → CodeDebuggerObservation
+  - step(action) → CodeDebuggerObservation (with reward, done, task_score)
+  - state property → EnvironmentState
 
-Compatible with the OpenEnv interface (reset/step/state).
+Real-world task: Debugging broken Python code snippets.
+Not a game or toy — software debugging is a core daily task for all developers.
 """
 
 import logging
-import time
-from typing import Optional
+from typing import Optional, Union
 from uuid import uuid4
 
-from .tasks import get_task, get_all_task_ids, get_task_metadata
+from .models import CodeDebuggerAction, CodeDebuggerObservation, EnvironmentState
+from .tasks import get_task, get_task_metadata
 from .grader import grade_submission, run_code
 
 logger = logging.getLogger(__name__)
@@ -20,35 +24,50 @@ logger = logging.getLogger(__name__)
 
 class CodeDebuggerEnvironment:
     """
-    CodeDebugger RL Environment.
-    
-    An agent must debug broken Python code snippets.
-    
-    Actions:
-        - submit_fix(code): Submit a fixed version of the code
-        - run_code(code): Test code without submitting (costs step)  
-        - get_hint(): Get a hint about the bug (costs -0.1 reward)
-        - skip(): Skip the current task (costs -1.0 reward)
-    
-    Observation:
-        - task_id, title, difficulty, category
-        - buggy_code: The broken code
-        - description: What the code is supposed to do
-        - expected_output: What correct output should look like
-        - steps_taken, hint_used, reward_so_far
-        - done, success
-    
-    Rewards:
-        +1.0  - Correct fix, no hints, first attempt
-        +0.8  - Correct fix after testing but no hints
-        +0.5  - Correct fix after using hint
-        -0.1  - Using hint
-        -0.2  - Wrong answer on submit
-        -0.5  - Tested code that errored
-        -1.0  - Skip or timeout
+    CodeDebugger RL Environment — OpenEnv compliant.
+
+    Real-world domain: Python code debugging.
+    An agent must read a broken code snippet and fix the bug by submitting
+    corrected Python code that passes an automated execution grader.
+
+    Action Space:
+        CodeDebuggerAction with action ∈ {submit_fix, run_code, get_hint, skip}
+
+    Observation Space:
+        CodeDebuggerObservation — typed Pydantic model containing:
+        - Task info: task_id, title, difficulty, category
+        - Content: buggy_code, description, expected_output (after hint)
+        - Progress: steps_taken, max_steps, hint_used, test_runs
+        - Signals: reward ∈ [-1.0, 1.0], task_score ∈ [0.0, 1.0]
+        - Status: done, success, message, last_action_error
+
+    Reward Function:
+        Intermediate (per step):
+          get_hint()    → -0.1  (penalizes hint dependency)
+          run_code()    → 0.0 (success) or -0.1 (code errors)
+          submit wrong  → -0.2 (penalizes incorrect guesses)
+          skip()        → -1.0 (episode-ending penalty)
+          timeout       → -1.0 (episode-ending penalty)
+
+        Final (on correct fix):
+          No hints, no test runs → +1.0  (perfect)
+          After test runs only   → +0.8  (good)
+          After using hint       → +0.5  (partial)
+
+    Task Score (0.0–1.0, per rubric):
+        Normalized from final reward: maps {-1.0…+1.0} → {0.0…1.0}
+        Only meaningful when done=True.
     """
 
     MAX_STEPS = 15
+
+    # ─── Baseline task set ──────────────────────────────────────────────────
+    # These 3 tasks form the fixed benchmark for reproducible baseline scores.
+    BASELINE_TASKS = [
+        "syn_001",   # Easy: missing colon in if statement
+        "log_001",   # Medium: off-by-one in range (sum 1..10)
+        "hard_001",  # Hard: mutable default argument
+    ]
 
     def __init__(self):
         self.episode_id: Optional[str] = None
@@ -63,19 +82,24 @@ class CodeDebuggerEnvironment:
         self.reward_history: list = []
         self._initialized = False
 
-    # ─── OpenEnv Interface ─────────────────────────────────────────────────
+    # ─── OpenEnv Interface ──────────────────────────────────────────────────
 
-    def reset(self, task_id: Optional[str] = None, difficulty: Optional[str] = None, category: Optional[str] = None) -> dict:
+    def reset(
+        self,
+        task_id: Optional[str] = None,
+        difficulty: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> CodeDebuggerObservation:
         """
-        Reset the environment with a new task.
-        
+        Reset the environment with a new debugging task.
+
         Args:
-            task_id: Specific task to use (optional)
-            difficulty: Filter tasks by difficulty (optional)
-            category: Filter tasks by category (optional)
-        
+            task_id: Pin to a specific task (for reproducible evaluation).
+            difficulty: Filter by difficulty ('easy', 'medium', 'hard').
+            category: Filter by category ('syntax', 'runtime', 'logic', 'algorithm').
+
         Returns:
-            Initial observation dict
+            CodeDebuggerObservation with initial task state.
         """
         self.episode_id = str(uuid4())
         self.current_task = get_task(task_id=task_id, difficulty=difficulty, category=category)
@@ -90,29 +114,36 @@ class CodeDebuggerEnvironment:
         self._initialized = True
 
         logger.info(
-            f"[Episode {self.episode_id[:8]}] Reset with task: {self.current_task['id']} "
-            f"({self.current_task['difficulty']})"
+            "[Episode %s] Reset → task=%s (%s)",
+            self.episode_id[:8],
+            self.current_task["id"],
+            self.current_task["difficulty"],
         )
 
-        return self._make_observation(reward=0.0, message="Environment reset. A new debugging task awaits!")
+        return self._make_obs(reward=0.0, message="New debugging task loaded. Fix the bug!")
 
-    def step(self, action: str, **kwargs) -> dict:
+    def step(
+        self, action: Union[CodeDebuggerAction, dict]
+    ) -> CodeDebuggerObservation:
         """
-        Execute an action in the environment.
-        
+        Execute one action in the environment.
+
         Args:
-            action: One of 'submit_fix', 'run_code', 'get_hint', 'skip'
-            **kwargs: Action-specific arguments
-                - code (str): For 'submit_fix' and 'run_code'
-        
+            action: A CodeDebuggerAction (or compatible dict) with fields:
+                    action (str), code (str | None)
+
         Returns:
-            Observation dict with reward, done, error fields
+            CodeDebuggerObservation with reward, done, task_score, and feedback.
         """
+        # Accept both typed model and plain dict (backwards compat)
+        if isinstance(action, dict):
+            action = CodeDebuggerAction(**action)
+
         if not self._initialized:
-            return self._error_obs("Environment not initialized. Call reset() first.")
+            return self._error_obs("Not initialized. Call reset() first.")
 
         if self.done:
-            return self._make_observation(
+            return self._make_obs(
                 reward=0.0,
                 message="Episode already finished. Call reset() to start a new task.",
             )
@@ -120,117 +151,100 @@ class CodeDebuggerEnvironment:
         self.steps_taken += 1
         self.last_action_error = None
 
-        # Check max steps
+        # Check timeout
         if self.steps_taken > self.MAX_STEPS:
             self.done = True
-            self.success = False
-            reward = -1.0
-            self._record_reward(reward)
-            return self._make_observation(
-                reward=reward,
-                message=f"⏰ Time limit reached ({self.MAX_STEPS} steps). Task failed.",
+            return self._make_obs(
+                reward=-1.0,
+                message=f"Timeout: {self.MAX_STEPS} steps exceeded.",
             )
 
-        # Dispatch action
-        if action == "submit_fix":
-            return self._handle_submit(kwargs.get("code", ""))
-        elif action == "run_code":
-            return self._handle_run(kwargs.get("code", ""))
-        elif action == "get_hint":
+        # Dispatch
+        if action.action == "submit_fix":
+            return self._handle_submit(action.code or "")
+        elif action.action == "run_code":
+            return self._handle_run(action.code or "")
+        elif action.action == "get_hint":
             return self._handle_hint()
-        elif action == "skip":
+        elif action.action == "skip":
             return self._handle_skip()
         else:
-            self.last_action_error = f"Unknown action: '{action}'"
-            return self._make_observation(
+            self.last_action_error = f"Unknown action: {action.action!r}"
+            return self._make_obs(
                 reward=-0.1,
-                message=f"Unknown action '{action}'. Valid actions: submit_fix, run_code, get_hint, skip",
+                message=f"Unknown action '{action.action}'. Valid: submit_fix, run_code, get_hint, skip",
             )
 
     @property
-    def state(self) -> dict:
-        """Return current environment state (no reward info)."""
-        if not self._initialized or self.current_task is None:
-            return {"initialized": False}
-        return {
-            "initialized": True,
-            "episode_id": self.episode_id,
-            "task_id": self.current_task["id"],
-            "title": self.current_task["title"],
-            "difficulty": self.current_task["difficulty"],
-            "category": self.current_task["category"],
-            "steps_taken": self.steps_taken,
-            "max_steps": self.MAX_STEPS,
-            "hint_used": self.hint_used,
-            "test_runs": self.test_runs,
-            "cumulative_reward": round(self.cumulative_reward, 2),
-            "done": self.done,
-            "success": self.success,
-        }
+    def state(self) -> EnvironmentState:
+        """Return current environment state (no reward/obs details)."""
+        if not self._initialized or not self.current_task:
+            return EnvironmentState(initialized=False)
+        return EnvironmentState(
+            initialized=True,
+            episode_id=self.episode_id,
+            task_id=self.current_task["id"],
+            title=self.current_task["title"],
+            difficulty=self.current_task["difficulty"],
+            category=self.current_task["category"],
+            steps_taken=self.steps_taken,
+            max_steps=self.MAX_STEPS,
+            hint_used=self.hint_used,
+            test_runs=self.test_runs,
+            cumulative_reward=round(self.cumulative_reward, 4),
+            done=self.done,
+            success=self.success,
+        )
 
-    # ─── Action Handlers ───────────────────────────────────────────────────
+    # ─── Action Handlers ────────────────────────────────────────────────────
 
-    def _handle_submit(self, code: str) -> dict:
-        """Handle submit_fix action."""
-        if not code or not code.strip():
-            self.last_action_error = "No code provided"
-            return self._make_observation(
-                reward=-0.1,
-                message="submit_fix requires a 'code' argument with your fixed code.",
-            )
+    def _handle_submit(self, code: str) -> CodeDebuggerObservation:
+        if not code.strip():
+            self.last_action_error = "Empty code submission"
+            return self._make_obs(reward=-0.1, message="submit_fix requires non-empty code.")
 
         task = self.current_task
         result = grade_submission(code, task["expected_output"])
 
         if result["passed"]:
-            # Compute final reward based on performance
-            base_reward = 1.0
+            # Compute final reward based on how much help was needed
             if self.hint_used:
-                base_reward = 0.5
+                final_reward = 0.5
             elif self.test_runs > 0:
-                base_reward = 0.8
+                final_reward = 0.8
+            else:
+                final_reward = 1.0
 
             self.done = True
             self.success = True
-            self._record_reward(base_reward)
+            self._record(final_reward)
 
             logger.info(
-                f"[Episode {self.episode_id[:8]}] ✅ Task solved! "
-                f"Steps: {self.steps_taken}, Reward: {base_reward}"
+                "[Episode %s] SOLVED task=%s steps=%d reward=%.1f",
+                self.episode_id[:8], task["id"], self.steps_taken, final_reward,
             )
 
-            msg = (
-                f"🎉 Correct! Task '{task['title']}' solved!\n"
-                f"Reward: +{base_reward:.1f} | "
-                f"Steps: {self.steps_taken} | "
-                f"Hints used: {self.hint_used}"
+            return self._make_obs(
+                reward=final_reward,
+                message=(
+                    f"Correct! Task '{task['title']}' solved in {self.steps_taken} steps. "
+                    f"Reward: +{final_reward:.1f}"
+                ),
+                extra={"actual_output": result["actual_output"]},
             )
-            return self._make_observation(reward=base_reward, message=msg)
         else:
-            reward = -0.2
-            self._record_reward(reward)
+            self._record(-0.2)
             self.last_action_error = result.get("error") or result.get("message")
-
-            logger.info(
-                f"[Episode {self.episode_id[:8]}] ❌ Wrong submission. "
-                f"Expected: {repr(task['expected_output'][:50])}, "
-                f"Got: {repr(result['actual_output'][:50])}"
-            )
-
-            return self._make_observation(
-                reward=reward,
+            return self._make_obs(
+                reward=-0.2,
                 message=result["message"],
                 extra={"actual_output": result["actual_output"], "error": result["error"]},
             )
 
-    def _handle_run(self, code: str) -> dict:
-        """Handle run_code action (test without submitting)."""
-        if not code or not code.strip():
-            self.last_action_error = "No code provided"
-            return self._make_observation(
-                reward=-0.1,
-                message="run_code requires a 'code' argument.",
-            )
+    def _handle_run(self, code: str) -> CodeDebuggerObservation:
+        if not code.strip():
+            self.last_action_error = "Empty code"
+            return self._make_obs(reward=-0.1, message="run_code requires non-empty code.")
 
         self.test_runs += 1
         success, stdout, stderr = run_code(code)
@@ -241,97 +255,103 @@ class CodeDebuggerEnvironment:
         else:
             reward = -0.1
             self.last_action_error = stderr
-            msg = f"Code execution error:\n{stderr[:500]}"
+            msg = f"Execution error:\n{stderr[:400]}"
 
-        self._record_reward(reward)
-
-        return self._make_observation(
+        self._record(reward)
+        return self._make_obs(
             reward=reward,
             message=msg,
             extra={"stdout": stdout, "stderr": stderr, "run_success": success},
         )
 
-    def _handle_hint(self) -> dict:
-        """Handle get_hint action."""
-        reward = -0.1
+    def _handle_hint(self) -> CodeDebuggerObservation:
         self.hint_used = True
-        self._record_reward(reward)
-
-        hint = self.current_task.get("hint", "No hint available for this task.")
-        logger.info(f"[Episode {self.episode_id[:8]}] Hint requested (cost: {reward})")
-
-        return self._make_observation(
-            reward=reward,
-            message=f"💡 Hint: {hint}",
+        self._record(-0.1)
+        hint = self.current_task.get("hint", "No hint available.")
+        return self._make_obs(
+            reward=-0.1,
+            message=f"Hint: {hint}",
             extra={"hint": hint},
         )
 
-    def _handle_skip(self) -> dict:
-        """Handle skip action."""
-        reward = -1.0
+    def _handle_skip(self) -> CodeDebuggerObservation:
         self.done = True
         self.success = False
-        self._record_reward(reward)
+        self._record(-1.0)
+        return self._make_obs(reward=-1.0, message="Task skipped.")
 
-        logger.info(f"[Episode {self.episode_id[:8]}] Task skipped.")
+    # ─── Helpers ────────────────────────────────────────────────────────────
 
-        return self._make_observation(
-            reward=reward,
-            message=f"⏭️ Task skipped. Reward: {reward}.",
-        )
-
-    # ─── Helpers ───────────────────────────────────────────────────────────
-
-    def _record_reward(self, reward: float):
-        self.reward_history.append(reward)
+    def _record(self, reward: float):
+        self.reward_history.append(round(reward, 4))
         self.cumulative_reward += reward
 
-    def _make_observation(self, reward: float, message: str, extra: Optional[dict] = None) -> dict:
-        """Build a standard observation dict."""
+    @staticmethod
+    def _normalize_score(reward: float) -> float:
+        """
+        Map final reward [-1.0, 1.0] → task_score [0.0, 1.0].
+        Used when done=True to give a rubric-compliant 0.0-1.0 score.
+        """
+        return round(max(0.0, min(1.0, (reward + 1.0) / 2.0)), 4)
+
+    def _make_obs(
+        self,
+        reward: float,
+        message: str,
+        extra: Optional[dict] = None,
+    ) -> CodeDebuggerObservation:
         task = self.current_task or {}
-        obs = {
-            # Episode info
-            "episode_id": self.episode_id,
-            "task_id": task.get("id"),
-            "title": task.get("title"),
-            "difficulty": task.get("difficulty"),
-            "category": task.get("category"),
-            # Task content
-            "buggy_code": task.get("buggy_code"),
-            "description": task.get("description"),
-            "expected_output": task.get("expected_output") if self.hint_used else None,
-            # Step info
-            "steps_taken": self.steps_taken,
-            "max_steps": self.MAX_STEPS,
-            "hint_used": self.hint_used,
-            "test_runs": self.test_runs,
-            # Reward
-            "reward": round(reward, 2),
-            "cumulative_reward": round(self.cumulative_reward, 2),
-            "reward_history": [round(r, 2) for r in self.reward_history],
-            # Status
-            "done": self.done,
-            "success": self.success,
-            "message": message,
-            "last_action_error": self.last_action_error,
-        }
+        reward = round(reward, 4)
+
+        # task_score: normalized 0.0-1.0 only meaningful at episode end
+        if self.done and self.success:
+            task_score = self._normalize_score(reward)
+        elif self.done:
+            task_score = 0.0  # failed episode
+        else:
+            task_score = 0.0  # not done yet
+
+        obs = CodeDebuggerObservation(
+            episode_id=self.episode_id,
+            task_id=task.get("id"),
+            title=task.get("title"),
+            difficulty=task.get("difficulty"),
+            category=task.get("category"),
+            buggy_code=task.get("buggy_code"),
+            description=task.get("description"),
+            # Only reveal expected_output after hint
+            expected_output=task.get("expected_output") if self.hint_used else None,
+            steps_taken=self.steps_taken,
+            max_steps=self.MAX_STEPS,
+            hint_used=self.hint_used,
+            test_runs=self.test_runs,
+            reward=reward,
+            cumulative_reward=round(self.cumulative_reward, 4),
+            task_score=task_score,
+            reward_history=self.reward_history.copy(),
+            done=self.done,
+            success=self.success,
+            message=message,
+            last_action_error=self.last_action_error,
+        )
+
         if extra:
-            obs.update(extra)
+            for k, v in extra.items():
+                if hasattr(obs, k):
+                    setattr(obs, k, v)
+
         return obs
 
-    def _error_obs(self, message: str) -> dict:
-        return {
-            "episode_id": None,
-            "done": True,
-            "success": False,
-            "reward": -1.0,
-            "message": message,
-            "last_action_error": message,
-        }
-
-    # ─── Utility ───────────────────────────────────────────────────────────
+    def _error_obs(self, message: str) -> CodeDebuggerObservation:
+        return CodeDebuggerObservation(
+            done=True,
+            success=False,
+            reward=-1.0,
+            task_score=0.0,
+            message=message,
+            last_action_error=message,
+        )
 
     def available_tasks(self) -> list:
-        """Return metadata for all available tasks."""
-        from .tasks import get_task_metadata
+        """Return lightweight metadata for all tasks."""
         return get_task_metadata()

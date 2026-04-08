@@ -1,6 +1,39 @@
 spec_version: 1
 name: codedebugger_env
+display_name: "CodeDebugger RL Environment"
+description: "Real-world Python debugging RL environment. An AI agent fixes broken code snippets across 36 tasks (easy/medium/hard) in 4 bug categories."
 type: space
 runtime: fastapi
 app: server.main:app
 port: 7860
+tags:
+  - openenv
+  - code-debugging
+  - python
+  - reinforcement-learning
+tasks:
+  - id: syn_001
+    name: "Easy: Missing colon in if statement"
+    difficulty: easy
+    category: syntax
+  - id: log_001
+    name: "Medium: Off-by-one in range (sum 1..10)"
+    difficulty: medium
+    category: logic
+  - id: hard_001
+    name: "Hard: Mutable default argument"
+    difficulty: hard
+    category: algorithm
+action_space:
+  type: discrete
+  actions:
+    - submit_fix
+    - run_code
+    - get_hint
+    - skip
+observation_space:
+  type: structured
+  model: CodeDebuggerObservation
+reward_range: [-1.0, 1.0]
+task_score_range: [0.0, 1.0]
+max_steps: 15
