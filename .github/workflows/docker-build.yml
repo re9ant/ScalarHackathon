@@ -1,0 +1,37 @@
+name: Docker Build CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: codedebugger-rl-env:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name test-env -p 7860:7860 codedebugger-rl-env:latest
+          sleep 10
+          curl -f http://localhost:7860/health || (docker logs test-env && exit 1)
+          echo "Health check passed!"
+          curl -s http://localhost:7860/tasks | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Tasks: {d[\"total\"]} total'); assert d['total'] >= 36"
+          echo "Tasks endpoint passed!"
+          docker stop test-env

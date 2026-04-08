@@ -1,0 +1,6 @@
+spec_version: 1
+name: codedebugger_env
+type: space
+runtime: fastapi
+app: server.main:app
+port: 7860
