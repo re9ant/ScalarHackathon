@@ -32,7 +32,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
 # Accept both HF_TOKEN (hackathon spec) and OPENAI_API_KEY (OpenAI convention)
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
-ENV_SERVER_URL = os.getenv("ENV_SERVER_URL", "https://re9ant-codedebugger-rl-env.hf.space")
+ENV_SERVER_URL = os.getenv("ENV_SERVER_URL", "https://suryasasaank-codedebugger-rl-env.hf.space")
 
 if HF_TOKEN is None:
     raise ValueError(
