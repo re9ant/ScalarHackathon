@@ -288,11 +288,10 @@ class CodeDebuggerEnvironment:
 
     @staticmethod
     def _normalize_score(reward: float) -> float:
-        """
-        Map final reward [-1.0, 1.0] → task_score [0.0, 1.0].
-        Used when done=True to give a rubric-compliant 0.0-1.0 score.
-        """
-        return round(max(0.0, min(1.0, (reward + 1.0) / 2.0)), 4)
+        # Map reward from [-1.0, 1.0] to [0.0, 1.0]
+        base_score = (reward + 1.0) / 2.0
+        # Squeeze strictly between 0 and 1 (e.g., 0.01 and 0.99)
+        return round(max(0.01, min(0.99, base_score)), 4)
 
     def _make_obs(
         self,
@@ -307,9 +306,9 @@ class CodeDebuggerEnvironment:
         if self.done and self.success:
             task_score = self._normalize_score(reward)
         elif self.done:
-            task_score = 0.0  # failed episode
+            task_score = 0.01  
         else:
-            task_score = 0.0  # not done yet
+            task_score = 0.01  
 
         obs = CodeDebuggerObservation(
             episode_id=self.episode_id,
@@ -347,7 +346,7 @@ class CodeDebuggerEnvironment:
             done=True,
             success=False,
             reward=-1.0,
-            task_score=0.0,
+            task_score=0.01,
             message=message,
             last_action_error=message,
         )

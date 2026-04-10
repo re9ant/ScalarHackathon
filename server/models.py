@@ -92,12 +92,12 @@ class CodeDebuggerObservation(BaseModel):
     cumulative_reward: float = Field(
         0.0, description="Sum of all rewards so far in this episode."
     )
+    
     task_score: float = Field(
-        0.0,
-        ge=0.0,
-        le=1.0,
-        description="Normalized task completion score in [0.0, 1.0]. "
-        "Only meaningful when done=True. 1.0 = perfect, 0.0 = failed.",
+        0.01, 
+        gt=0.0, 
+        lt=1.0, 
+        description="Task score strictly between 0 and 1"
     )
     reward_history: List[float] = Field(
         default_factory=list,
