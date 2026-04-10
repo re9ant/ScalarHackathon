@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-codedebugger-serve = "server.main:app"
+server = "server.app:main"
 
 [project.optional-dependencies]
 dev = [
