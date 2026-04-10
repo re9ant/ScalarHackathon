@@ -54,7 +54,9 @@ def deploy(token: str, username: str, space_name: str = "CodeDebugger-RL-Env"):
         "server/tasks.py",
         "server/grader.py",
         "pyproject.toml",
-        "openenv.yaml"
+        "openenv.yaml",
+        "uv.lock",
+        "server/app.py"
     ]
 
     print("\n📁 Uploading files...")
