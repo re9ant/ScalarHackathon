@@ -16,3 +16,9 @@ server.log
 server_err.log
 test_smoke.py
 test_integration.py
+
+project_overview.md
+hackathon_audit_report.md
+validate-submission.sh
+test_models.py
+.DS_Store

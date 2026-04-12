@@ -24,7 +24,7 @@ tags:
 
 ---
 
-## 🎯 Environment Description & Motivation
+## Environment Description & Motivation
 
 **CodeDebugger** trains AI agents to fix broken Python code — one of the highest-value tasks in software engineering.
 
@@ -37,7 +37,7 @@ Every developer spends significant time debugging: finding and fixing syntax err
 
 ---
 
-## 📐 Action Space
+## Action Space
 
 Actions are defined by the `CodeDebuggerAction` Pydantic model:
 
@@ -56,7 +56,7 @@ class CodeDebuggerAction(BaseModel):
 
 ---
 
-## 👁️ Observation Space
+## Observation Space
 
 Observations are defined by the `CodeDebuggerObservation` Pydantic model:
 
@@ -95,7 +95,7 @@ class CodeDebuggerObservation(BaseModel):
 
 ---
 
-## 🏆 Reward Function
+## Reward Function
 
 The reward function provides **dense signal throughout the episode**, not just sparse terminal rewards.
 
@@ -121,7 +121,7 @@ The reward function provides **dense signal throughout the episode**, not just s
 
 ---
 
-## 📋 Task Descriptions
+## Task Descriptions
 
 ### Easy Tasks (12 tasks)
 
@@ -176,7 +176,7 @@ The reward function provides **dense signal throughout the episode**, not just s
 
 ---
 
-## 📊 Baseline Scores
+## Baseline Scores
 
 Reproducible baseline run on the 3 fixed benchmark tasks using `meta-llama/Llama-3.1-8B-Instruct`:
 
@@ -190,7 +190,7 @@ Reproducible baseline run on the 3 fixed benchmark tasks using `meta-llama/Llama
 
 ---
 
-## 🔌 API Reference
+## API Reference
 
 Base URL: `https://re9ant-codedebugger-rl-env.hf.space`
 
@@ -205,7 +205,7 @@ Base URL: `https://re9ant-codedebugger-rl-env.hf.space`
 
 ---
 
-## 🚀 Setup & Usage
+## Setup & Usage
 
 ### Local Development
 
@@ -262,7 +262,7 @@ python inference.py --task-id hard_001  # specific task
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ScalarHackathon/
@@ -282,7 +282,7 @@ ScalarHackathon/
 
 ---
 
-## 🔒 Security
+## Security
 
 All submitted code executes in an isolated subprocess with:
 - **10-second timeout** — prevents infinite loops
@@ -292,6 +292,6 @@ All submitted code executes in an isolated subprocess with:
 
 ---
 
-## 📜 License
+## License
 
 MIT — [re9ant/ScalarHackathon](https://github.com/re9ant/ScalarHackathon)
